@@ -1,0 +1,42 @@
+name: HPC local foundation
+
+on:
+  pull_request:
+    paths:
+      - "packages/loopx-hpc/**"
+      - ".github/workflows/hpc-local.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/loopx-hpc/**"
+      - ".github/workflows/hpc-local.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  local-acceptance:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      MLFLOW_DISABLE_TELEMETRY: "true"
+      DO_NOT_TRACK: "true"
+      WANDB_MODE: "offline"
+      LOOPX_HPC_TEST_WANDB: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install optional integration and test dependencies
+        run: python -m pip install -e '.[test]' -e 'packages/loopx-hpc[test,mlflow,wandb]'
+      - name: Lint optional package
+        run: python -m ruff check packages/loopx-hpc
+      - name: Test local execution, tracking and governed provider
+        run: python -m pytest packages/loopx-hpc/tests -q
