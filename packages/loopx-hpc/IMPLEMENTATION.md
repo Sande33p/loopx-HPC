@@ -1,0 +1,76 @@
+# HPC integration boundaries and next acceptance gates
+
+## Placement decision
+
+The provider id is `loopx-hpc`; the caller-facing capability is
+`experiment-execution`. This independently installed package owns scientific
+execution and records. Existing ML-domain helpers are advisory, while the
+benchmark toolkit intentionally delegates runner ownership. Neither requires
+putting scheduler-specific state into LoopX's generic kernel. The fork keeps
+upstream code, licensing notices and entry points intact; this is an independent
+downstream integration, not an official LoopX release.
+
+LoopX remains authoritative for goal, Todo, gates, accepted progress and Turn
+settlement. The campaign database owns exact scientific definitions, attempts,
+results and decision lineage. Tracking is a projection. Future semantic memory
+must remain advisory, linked to exact source records rather than granting
+execution authority or replacing them.
+
+## Implemented local slice
+
+- Immutable finite study definitions, exact typed configs, provenance fields,
+  local event history and bounded proposal admission.
+- Explicit local process execution with detached workers, durable attempt
+  reservation, completion validation, timeout handling and unresolved-state
+  duplicate suppression. Unknown attempts continue to reserve capacity.
+- A model-free adaptive demonstration and a harness-independent JSON proposal
+  boundary, fenced against stale context and changed evidence.
+- Local JSON, SQLite-backed MLflow and offline W&B projections.
+- PBS/Slurm script and command previews, conservative single-job observation
+  parsers, and declarative environment recipes. No remote command execution.
+- Optional read-only and governed material LoopX provider integration. Host
+  writeback must distinguish scientific failure from protocol settlement.
+
+No upstream default behavior changes. No general scheduler service, live model
+campaign, Aurora execution, container builder, FALDA connector, or statistical
+optimizer is claimed.
+
+## Ordered follow-up work
+
+1. Use a representative local scientific workload, not the synthetic demo.
+   Specify baseline, data splits, metric, replicates and evaluation rules.
+   Validate two real agent runtimes consuming identical context and returning
+   bounded proposals without inheriting hidden conversation state.
+2. Add a supported unattended host driver using real LoopX admission,
+   writeback, monitor and quota contracts. Measure CPU/GPU/node-time separately
+   from agent compute; add cancellation and explicit attempt-recovery policy.
+3. Build one real scheduler adapter first. Preserve separate experiment,
+   attempt and scheduler-job identity; prove lost-ack reconciliation before any
+   retry, queued versus running state, scheduler accounting, stage-out,
+   checkpoint handling and bounded cleanup.
+4. Qualify a real site environment and credential boundary. For an Aurora pilot,
+   obtain an approved allocation/queue, filesystem, modules/container approach,
+   Intel GPU/MPI launch recipe and small smoke budget. Preview/review first;
+   do not infer these values from the local machine.
+5. Run crash/restart, repeated delivery, interrupted submission, failed
+   execution, partial-artifact and requeue tests on that site. Only then enable
+   a bounded real scientific campaign and optional remote tracker sync.
+6. Extend scientific selection with comparability, replicates/uncertainty,
+   holdout protection and explicit promotion/stopping policy. Add evidence-linked
+   semantic retrieval only after exact-record acceptance is stable.
+
+## Known limits
+
+The local worker is not an adversarial sandbox. Arbitrary owner-approved
+commands run with local process permissions. POSIX process groups cannot contain
+deliberate session escapes; local execution is unsuitable for untrusted code.
+The first store supports one attempt per config with no automatic retries.
+Replicates must include seed/replicate identity in the frozen configuration.
+SQLite state belongs on a local filesystem; do not put this ledger on a shared
+HPC filesystem without validating its locking and durability semantics.
+Environment digests describe declared recipes, not actual resolved software.
+
+The future-facing review kept scheduler recipes, tracking projections and
+scientific records in the optional package instead of introducing a parallel
+generic control plane. Missing production host/scheduler integration remains
+explicit follow-up work rather than an unvalidated framework in core.
