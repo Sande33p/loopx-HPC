@@ -115,6 +115,75 @@ def test_preview_and_remote_gates_do_not_create_tracking_state(tmp_path):
     assert not target.exists()
 
 
+def test_submission_row_timestamp_before_journal_events_does_not_end_run(tmp_path):
+    from loopx_hpc.mlflow_tracking import _plan, _read
+
+    store, identifier = store_at(tmp_path / "source")
+    reserved_at = "2026-01-02T01:00:00.003+00:00"
+    submitted_at = "2026-01-02T01:00:00.007+00:00"
+    transition(store, identifier, "submitting", "attempt_reserved", reserved_at)
+    with store.transaction() as connection:
+        # The real transaction updates the row before inserting its journal
+        # event. Crossing a millisecond boundary is valid, not clock reversal.
+        connection.execute(
+            "UPDATE experiments SET updated_at=? WHERE id=?", (T0, identifier)
+        )
+        store.event(
+            connection,
+            "scheduler_submitted",
+            identifier,
+            {
+                "token": "test-attempt",
+                "backend": "slurm",
+                "job_id": "123",
+            },
+        )
+        connection.execute(
+            "UPDATE events SET created_at=? WHERE kind='scheduler_submitted'",
+            (submitted_at,),
+        )
+    snapshot, events = _read(store)
+    plans, _ = _plan(store, snapshot, events)
+    assert plans[0]["metric_ms"] == int(
+        datetime.fromisoformat(submitted_at).timestamp() * 1000
+    )
+    assert plans[0]["projection"]["finished_at"] is None
+    assert plans[0]["projection"]["finished_at_basis"] == "not_recorded"
+    before = store.database.read_bytes()
+    receipt = sync_mlflow(store, tmp_path / "tracker", execute=True)
+    run = client_for(receipt).get_run(receipt["runs"][0]["run_id"])
+    assert run.info.status == "RUNNING"
+    assert run.info.end_time is None
+    assert run.info.start_time == int(
+        datetime.fromisoformat(reserved_at).timestamp() * 1000
+    )
+    assert "loopx.finished_at" not in run.data.tags
+    assert store.database.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "finished_at", ["2026-01-02T00:59:59.997+00:00", "2026-01-02T01:00:59.997+00:00"]
+)
+def test_invalid_actual_terminal_chronology_is_still_rejected(tmp_path, finished_at):
+    store, identifier = store_at(tmp_path / "source")
+    transition(store, identifier, "submitting", "attempt_reserved", T0)
+    finish(store, identifier)
+    with store.transaction() as connection:
+        row = connection.execute(
+            "SELECT sequence,payload FROM events WHERE kind='attempt_finished'"
+        ).fetchone()
+        payload = json.loads(row["payload"])
+        payload["finished_at"] = finished_at
+        connection.execute(
+            "UPDATE events SET payload=? WHERE sequence=?",
+            (canonical(payload), row["sequence"]),
+        )
+    target = tmp_path / "must-not-create"
+    with pytest.raises(ValueError, match="timestamps are out of order"):
+        sync_mlflow(store, target, execute=True)
+    assert not target.exists()
+
+
 def test_real_lifecycle_one_run_original_times_params_artifacts_and_copy_replay(
     tmp_path, monkeypatch
 ):
