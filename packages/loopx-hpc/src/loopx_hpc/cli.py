@@ -1,4 +1,4 @@
-"""Local operator CLI. Remote job rendering never dispatches a command."""
+"""Campaign operator CLI; scheduler effects and tracker sync require explicit opt-in."""
 
 from __future__ import annotations
 
@@ -197,6 +197,32 @@ def main(argv: list[str] | None = None) -> int:
         default="json",
     )
     track.add_argument("--destination", type=Path, required=True)
+    sync = sub.add_parser(
+        "tracking-sync", help="Preview or sync attempt lifecycles to MLflow"
+    )
+    sync.add_argument("--destination", type=Path, required=True)
+    sync.add_argument("--tracking-uri")
+    sync.add_argument("--allow-external", action="store_true")
+    sync.add_argument("--execute", action="store_true")
+    batch = sub.add_parser(
+        "scheduler-submit",
+        help="Preview or submit one PBS/Slurm attempt from a login node",
+    )
+    batch.add_argument("--experiment", required=True)
+    batch.add_argument("--profile", type=Path, required=True)
+    batch.add_argument("--execute", action="store_true")
+    cancel = sub.add_parser(
+        "scheduler-cancel",
+        help="Preview or request cancellation; reconcile confirms termination",
+    )
+    cancel.add_argument("--experiment", required=True)
+    cancel.add_argument("--execute", action="store_true")
+    site = sub.add_parser(
+        "site-profile",
+        help="Build a nonexecuting site profile from explicit reviewed inputs",
+    )
+    site.add_argument("--site", choices=("aurora", "slurm"), required=True)
+    site.add_argument("--input", type=Path, required=True)
     render = sub.add_parser(
         "render-job", help="Print a scheduler script only; never submits"
     )
@@ -284,11 +310,50 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "submit":
             result = LocalExecutor(store).submit(args.experiment, execute=args.execute)
         elif args.action == "reconcile":
+            from .scheduler_execution import SchedulerExecutor
+
+            batch_ids = {
+                a["experiment_id"] for a in store.status().get("scheduler_attempts", [])
+            }
             result = {
                 "experiments": [
-                    LocalExecutor(store).reconcile(r["id"]) for r in store.experiments()
+                    (
+                        SchedulerExecutor(store)
+                        if r["id"] in batch_ids
+                        else LocalExecutor(store)
+                    ).reconcile(r["id"])
+                    for r in store.experiments()
                 ]
             }
+        elif args.action == "scheduler-submit":
+            from .scheduler_execution import SchedulerExecutor
+
+            result = SchedulerExecutor(store).submit(
+                args.experiment,
+                json.loads(args.profile.read_text()),
+                execute=args.execute,
+            )
+        elif args.action == "scheduler-cancel":
+            from .scheduler_execution import SchedulerExecutor
+
+            result = SchedulerExecutor(store).cancel(
+                args.experiment, execute=args.execute
+            )
+        elif args.action == "tracking-sync":
+            from .mlflow_tracking import sync_mlflow
+
+            result = sync_mlflow(
+                store,
+                args.destination,
+                tracking_uri=args.tracking_uri,
+                allow_external=args.allow_external,
+                execute=args.execute,
+            )
+        elif args.action == "site-profile":
+            from .aurora import aurora_profile, slurm_profile
+
+            builder = aurora_profile if args.site == "aurora" else slurm_profile
+            result = builder(**json.loads(args.input.read_text()))
         elif args.action == "track":
             from .tracking import export_tracking
 
@@ -316,7 +381,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         else:
             result = demo(args.root, execute=args.execute)
-    except (ValueError, OSError, KeyError, ImportError, RuntimeError) as error:
+    except (
+        ValueError,
+        OSError,
+        KeyError,
+        ImportError,
+        RuntimeError,
+        TypeError,
+    ) as error:
         print(json.dumps({"ok": False, "error": str(error)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))

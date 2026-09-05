@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .campaign import CampaignStore
+from .campaign import CampaignStore, digest
 from .local import LocalExecutor
 
 CAPABILITY_ID = "experiment-execution"
@@ -95,7 +95,9 @@ def _observation(experiment: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def handle_request(request: Mapping[str, Any], *, root: Path) -> dict[str, Any]:
+def handle_request(
+    request: Mapping[str, Any], *, root: Path, scheduler_profile: Path | None = None
+) -> dict[str, Any]:
     """Handle a validated upstream request without creating a campaign or goal."""
     if not isinstance(request, Mapping) or set(request) - _REQUEST_FIELDS:
         raise ValueError("unsupported request fields")
@@ -107,13 +109,27 @@ def handle_request(request: Mapping[str, Any], *, root: Path) -> dict[str, Any]:
     if not isinstance(invocation, str) or not _INVOCATION.fullmatch(invocation):
         raise ValueError("invalid invocation id")
     payload = request.get("input")
-    if not isinstance(payload, Mapping) or set(payload) != {"experiment_id"}:
-        raise ValueError("input requires only experiment_id")
-    experiment_id = _token(payload["experiment_id"], "experiment id")
     operation = request.get("operation")
-    if operation not in {"observe", "run_local"}:
+    expected_input = (
+        {"experiment_id", "profile_digest", "manifest_digest"}
+        if operation == "run_scheduler"
+        else {"experiment_id"}
+    )
+    if not isinstance(payload, Mapping) or set(payload) != expected_input:
+        raise ValueError("input does not match operation fields")
+    experiment_id = _token(payload["experiment_id"], "experiment id")
+    if operation not in {"observe", "run_local", "run_scheduler"}:
         raise ValueError("unsupported operation")
     store = CampaignStore(root)
+    manifest_digest = None
+    if operation == "run_scheduler":
+        manifest_digest = payload["manifest_digest"]
+        if not isinstance(manifest_digest, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", manifest_digest
+        ):
+            raise ValueError("invalid scheduler source manifest digest")
+        if digest(store.manifest()) != manifest_digest:
+            raise ValueError("scheduler source manifest differs from admitted study")
     experiment = _experiment(store, experiment_id)
     effect_id = None
     if operation == "observe":
@@ -124,7 +140,7 @@ def handle_request(request: Mapping[str, Any], *, root: Path) -> dict[str, Any]:
         lifecycle = request.get("lifecycle")
         authority = request.get("authority")
         if not isinstance(lifecycle, Mapping) or not isinstance(authority, Mapping):
-            raise ValueError("run_local requires governed lifecycle authority")
+            raise ValueError("execution requires governed lifecycle authority")
         effect_id = _token(lifecycle.get("idempotency_key"), "idempotency key")
         if authority.get("effect_id") != effect_id:
             raise ValueError("lifecycle identity does not match effect authority")
@@ -134,17 +150,52 @@ def handle_request(request: Mapping[str, Any], *, root: Path) -> dict[str, Any]:
         ):
             raise ValueError("effect authority does not match goal")
         phase = lifecycle.get("phase")
+        executor = LocalExecutor(store)
+        profile = None
+        if operation == "run_scheduler":
+            from .scheduler_execution import SchedulerExecutor, validate_profile
+            from .worker import _read_artifact
+
+            requested_digest = payload["profile_digest"]
+            if not isinstance(requested_digest, str) or not re.fullmatch(
+                r"[a-f0-9]{64}", requested_digest
+            ):
+                raise ValueError("invalid scheduler profile digest")
+            executor = SchedulerExecutor(store)
+            if phase == "start":
+                if scheduler_profile is None or not scheduler_profile.is_absolute():
+                    raise ValueError(
+                        "scheduler execution requires an operator-configured profile"
+                    )
+                _, profile = _read_artifact(scheduler_profile)
+                profile = validate_profile(profile)
+                if digest(profile) != requested_digest:
+                    raise ValueError("scheduler profile differs from admitted digest")
+            else:
+                attempts = store.status().get("scheduler_attempts", [])
+                if not any(
+                    a["experiment_id"] == experiment_id
+                    and a["profile_digest"] == requested_digest
+                    for a in attempts
+                ):
+                    raise ValueError("scheduler attempt differs from admitted profile")
         if phase == "start":
-            experiment = LocalExecutor(store).submit(experiment_id, execute=True)
+            experiment = (
+                executor.submit(experiment_id, profile, execute=True)
+                if profile
+                else executor.submit(experiment_id, execute=True)
+            )
         elif phase == "reconcile":
-            experiment = LocalExecutor(store).reconcile(experiment_id)
+            experiment = executor.reconcile(experiment_id)
         else:
             raise ValueError("unsupported lifecycle phase")
 
     observation = _observation(experiment)
+    if manifest_digest is not None:
+        observation["manifest_digest"] = "sha256:" + manifest_digest
     if experiment["status"] == "succeeded":
         observation["evidence_valid"] = store.verify_record(experiment)
-        if operation == "run_local" and not observation["evidence_valid"]:
+        if operation != "observe" and not observation["evidence_valid"]:
             raise ValueError("terminal experiment evidence did not validate")
     terminal = experiment["status"] in {"succeeded", "failed"}
     result: dict[str, Any] = {
@@ -163,7 +214,7 @@ def handle_request(request: Mapping[str, Any], *, root: Path) -> dict[str, Any]:
             "ref": f"experiment:{experiment_id}",
         },
     }
-    if operation == "run_local" and terminal:
+    if operation != "observe" and terminal:
         result["effect_receipt"] = {
             "schema_version": "loopx_external_effect_receipt_v0",
             "invocation_id": invocation,
@@ -192,7 +243,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         raw = sys.stdin.buffer.read(1_000_001)
         if len(raw) > 1_000_000:
             raise ValueError("request exceeds size limit")
-        result = handle_request(json.loads(raw), root=root)
+        configured_profile = os.environ.get("LOOPX_HPC_SCHEDULER_PROFILE")
+        result = handle_request(
+            json.loads(raw),
+            root=root,
+            scheduler_profile=Path(configured_profile) if configured_profile else None,
+        )
     except (ValueError, TypeError, KeyError, OSError):
         # Provider error text can include private paths or commands; never echo it.
         json.dump(

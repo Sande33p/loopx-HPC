@@ -20,6 +20,17 @@
         "action_kinds": ["run_experiment"],
         "target_key_prefixes": ["experiment:"]
       }
+    },
+    {
+      "id": "run_scheduler",
+      "effect_class": "external_write",
+      "required_permission": "experiment.scheduler.execute",
+      "request_schema": "loopx_hpc_experiment_request_v0",
+      "result_schema": "loopx_hpc_experiment_result_v0",
+      "todo_contract": {
+        "action_kinds": ["run_experiment"],
+        "target_key_prefixes": ["experiment:"]
+      }
     }
   ]
 }

@@ -19,7 +19,7 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from .environments import render_environment_prologue
+from .environments import render_environment_prologue, validate_environment
 
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 _WALLTIME = re.compile(r"([0-9]{1,4}):([0-5][0-9]):([0-5][0-9])\Z")
@@ -110,6 +110,9 @@ def render_script(
     validated. A rendered script is not permission to execute or submit it.
     """
     checked = validate_resources(scheduler, resources)
+    checked_environment = (
+        validate_environment(environment) if environment is not None else None
+    )
     if not isinstance(command, list) or not command or len(command) > 4096:
         raise ValueError("command must be a nonempty argv list")
     for arg in command:
@@ -122,7 +125,9 @@ def render_script(
     if not command[0] or command[0].startswith("-"):
         raise ValueError("command executable must be nonempty and not an option")
     lines = [
-        "#!/bin/bash",
+        "#!/bin/bash -l"
+        if checked_environment and checked_environment["login_shell"]
+        else "#!/bin/bash",
         "# Preview only: no submission or site validation has occurred.",
     ]
     if scheduler == "slurm":
@@ -158,8 +163,8 @@ def render_script(
         if "place" in checked:
             lines.append(f"#PBS -l place={checked['place']}")
     lines.extend(["", "set -euo pipefail", "umask 077"])
-    if environment is not None:
-        lines.extend(render_environment_prologue(environment))
+    if checked_environment is not None:
+        lines.extend(render_environment_prologue(checked_environment))
     lines.append("exec -- " + shlex.join(command))
     return "\n".join(lines) + "\n"
 

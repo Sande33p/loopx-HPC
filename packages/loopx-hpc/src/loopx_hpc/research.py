@@ -128,6 +128,9 @@ def _evidence(record: dict, events: list[dict] = ()) -> dict:
                 "attempt_finished",
                 "worker_spawn_failed",
                 "attempt_unresolved",
+                "scheduler_submitted",
+                "scheduler_observed",
+                "scheduler_cancel_requested",
             }
             and event["payload"].get("token", record["token"]) == record["token"]
         ],

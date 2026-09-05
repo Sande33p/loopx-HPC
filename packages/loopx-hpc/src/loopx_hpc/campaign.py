@@ -2,7 +2,7 @@
 
 One immutable study per directory. SQLite transactions serialize admission and
 evidence-linked proposals. Unknown attempts reserve capacity until reconciled;
-v0 deliberately has no automatic retries or remote execution.
+attempts are never automatically retried.
 """
 
 from __future__ import annotations
@@ -372,6 +372,11 @@ class CampaignStore:
         records = research_records(connection)
         if records:
             snapshot["research_records"] = records
+        from .scheduler_execution import scheduler_records
+
+        attempts = scheduler_records(connection)
+        if attempts:
+            snapshot["scheduler_attempts"] = attempts
         return snapshot
 
     def status(self) -> dict:

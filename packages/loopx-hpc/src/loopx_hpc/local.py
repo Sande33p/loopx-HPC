@@ -95,6 +95,16 @@ class LocalExecutor:
         return self.store.get_experiment(experiment_id)
 
     def reconcile(self, experiment_id: str) -> dict:
+        from .scheduler_execution import scheduler_records
+
+        with self.store.transaction() as connection:
+            if any(
+                a["experiment_id"] == experiment_id
+                for a in scheduler_records(connection)
+            ):
+                raise ValueError(
+                    "use SchedulerExecutor to reconcile this scheduler attempt"
+                )
         record = self.store.get_experiment(experiment_id)
         if record["status"] not in ACTIVE or record["status"] == "unknown":
             return record
