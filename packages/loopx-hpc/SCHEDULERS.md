@@ -109,6 +109,11 @@ effect and does not drive execution or accept scientific conclusions.
   ID from a matching completed worker receipt and independently query accounting.
   Before that proof, the attempt remains unknown; there is no manual job-ID
   override or automatic resubmission.
+- When a returned submission acknowledgement is unresolved, bounded native
+  stderr is retained only in the mode-`0600` private attempt artifact
+  `runs/EXPERIMENT/TOKEN/scheduler-submit.stderr`. It is never copied into the
+  SQLite journal, status/context output, or tracking projections. A missing
+  artifact means stderr was empty or its private persistence also failed.
 - PBS jobs are marked non-rerunnable; Slurm uses `--no-requeue`. The worker also
   exclusively claims a durable `started.json` before execution. Scheduler
   redelivery cannot silently rerun the same payload.
