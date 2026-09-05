@@ -159,10 +159,13 @@ def _plan(
                 raise ValueError(
                     "terminal source status or metrics differ from execution receipt"
                 )
+        # A live attempt's observation bound comes from its journal, not the
+        # experiment row updated just before the reservation event was inserted.
+        # This is an observed timestamp, never a fabricated terminal finish.
         finished_at = (
             (terminal["payload"].get("finished_at") or terminal["created_at"])
             if terminal
-            else record["updated_at"]
+            else last["created_at"]
         )
         started_at = next(
             (
