@@ -1,0 +1,36 @@
+{
+  "schema_version": "loopx_external_domain_capability_profile_v0",
+  "capability_id": "experiment-execution",
+  "protocol": "loopx_hpc_experiment_provider_v0",
+  "operations": [
+    {
+      "id": "observe",
+      "effect_class": "read_only",
+      "required_permission": "experiment.read",
+      "request_schema": "loopx_hpc_experiment_request_v0",
+      "result_schema": "loopx_hpc_experiment_result_v0"
+    },
+    {
+      "id": "run_local",
+      "effect_class": "external_write",
+      "required_permission": "experiment.local.execute",
+      "request_schema": "loopx_hpc_experiment_request_v0",
+      "result_schema": "loopx_hpc_experiment_result_v0",
+      "todo_contract": {
+        "action_kinds": ["run_experiment"],
+        "target_key_prefixes": ["experiment:"]
+      }
+    },
+    {
+      "id": "run_scheduler",
+      "effect_class": "external_write",
+      "required_permission": "experiment.scheduler.execute",
+      "request_schema": "loopx_hpc_experiment_request_v0",
+      "result_schema": "loopx_hpc_experiment_result_v0",
+      "todo_contract": {
+        "action_kinds": ["run_experiment"],
+        "target_key_prefixes": ["experiment:"]
+      }
+    }
+  ]
+}
