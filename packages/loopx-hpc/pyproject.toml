@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loopx-hpc"
+version = "0.1.0"
+description = "Local-first scientific experiment execution for a downstream LoopX integration"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = []
+
+[project.optional-dependencies]
+mlflow = ["mlflow-skinny>=3,<4", "sqlalchemy>=2,<3", "alembic>=1,<2"]
+wandb = ["wandb>=0.21,<1"]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+loopx-hpc = "loopx_hpc.cli:main"
+loopx-hpc-provider = "loopx_hpc.provider:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

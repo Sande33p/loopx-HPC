@@ -1,0 +1,24 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "loopx-hpc"
+version = "0.1.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["experiment.read", "experiment.local.execute"]
+
+[runtime]
+protocol = "loopx_hpc_experiment_provider_v0"
+python_module = "loopx_hpc.provider"
+doctor_args = ["--doctor"]
+required_permissions = ["experiment.read", "experiment.local.execute"]
+timeout_seconds = 30
+
+[[provides]]
+id = "experiment-execution"
+kind = "experiment_execution"
+title = "Bounded experiment execution"
+status = "active-preview"
+user_value = "Observe or execute one registered local experiment with durable evidence."
+next_real_step = "Bind an approved experiment to a governed execution turn."
+real_world_anchor = "An owner-configured campaign and local execution backend."
+entry_command = "loopx capability invoke"
+visibility = "public"
+integration_profile = "integration-profile.json"
