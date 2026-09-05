@@ -30,6 +30,12 @@ execution authority or replacing them.
   parsers, and declarative environment recipes. No remote command execution.
 - Optional read-only and governed material LoopX provider integration. Host
   writeback must distinguish scientific failure from protocol settlement.
+- Optional structured predictions and alternatives, source-bound immutable
+  assessments and a read-only experiment evolution graph with exact lineage.
+- Explicit local cross-project lessons with applicability limits, evidence/event
+  hashes, corrections, withdrawal and reviewed adoption. Lesson-informed
+  proposals recheck the same library without importing source results as target
+  evidence. A four-trial synthetic source-to-target acceptance demo is available.
 
 No upstream default behavior changes. No general scheduler service, live model
 campaign, Aurora execution, container builder, FALDA connector, or statistical
@@ -69,6 +75,10 @@ Replicates must include seed/replicate identity in the frozen configuration.
 SQLite state belongs on a local filesystem; do not put this ledger on a shared
 HPC filesystem without validating its locking and durability semantics.
 Environment digests describe declared recipes, not actual resolved software.
+Lessons are advisory local snapshots, not semantic model memory or signed
+scientific truth. Automatic correction propagation across copied libraries,
+statistical validity, source authorship and remote provenance attestations are
+not implemented. See [RESEARCH.md](RESEARCH.md) for the exact learning contracts.
 
 The future-facing review kept scheduler recipes, tracking projections and
 scientific records in the optional package instead of introducing a parallel

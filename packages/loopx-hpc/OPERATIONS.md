@@ -88,6 +88,10 @@ validated by this milestone. Runtime labels are provenance, not credentials.
 
 ## Local tracking
 
+For explicit predictions, evidence-linked assessments, the evolution graph,
+and conditional cross-project lessons, see [RESEARCH.md](RESEARCH.md). The
+`learning-demo` command exercises this path using four actual local trials.
+
 ```sh
 .venv/bin/loopx-hpc --root .local/hpc-pilot track --backend mlflow --destination .local/hpc-tracking
 .venv/bin/loopx-hpc --root .local/hpc-pilot track --backend wandb-offline --destination .local/hpc-tracking
