@@ -1,0 +1,16 @@
+{
+  "account": "UNCONFIGURED",
+  "queue": "UNCONFIGURED",
+  "python": "/UNCONFIGURED/venv/bin/python",
+  "working_directory": "/UNCONFIGURED/shared-project",
+  "modules": [],
+  "filesystems": ["home", "flare"],
+  "nodes": 1,
+  "walltime": "00:10:00",
+  "gpu_mode": "tile",
+  "cpus_per_rank": 8,
+  "master_port": 29500,
+  "rendezvous_network": "hsn",
+  "configured": false,
+  "variables": {}
+}

@@ -1,8 +1,11 @@
 # Research evolution and cross-project lessons
 
 This optional local layer preserves how an experiment campaign evolves. It does
-not choose a model, spawn agents, run an unattended service, or grant permission
-to execute. Any harness can supply the same JSON contracts. “Reasoning” means
+not choose a model or add another agent spawner or unattended service. Upstream
+LoopX already provides host adapters and continuation paths for Codex, Claude
+Code and Pi; reuse those through the [host integration boundary](OPERATIONS.md#reuse-the-existing-loopx-host-runtimes).
+Any harness can supply the same JSON contracts, but a proposal grants no
+permission to execute. “Reasoning” means
 explicit authored hypotheses, predictions, alternatives, selection rationales
 and uncertainty—not access to a model's private chain-of-thought.
 
@@ -181,6 +184,8 @@ rollback-journal mode, not WAL or unqualified shared HPC storage.
 
 LoopX still owns goal/todo/gates, admission and accepted progress. Exact records
 live here; trackers are projections and reusable lessons remain advisory. This
-milestone adds the durable learning path, not native agent adapters, scheduler
-dispatch, statistical comparison/replication policy, or long-running autonomous
-campaign supervision.
+milestone adds the durable learning path. Existing upstream agent adapters and
+continuation machinery should be reused, not reimplemented. Their end-to-end
+qualification with this HPC campaign remains pending, as do scheduler dispatch
+and statistical comparison/replication policy; upstream host support alone does
+not prove a long-running scientific campaign.
