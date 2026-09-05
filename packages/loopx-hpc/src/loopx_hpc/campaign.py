@@ -7,7 +7,7 @@ v0 deliberately has no automatic retries or remote execution.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -351,24 +351,32 @@ class CampaignStore:
             return False
         return True
 
-    def status(self) -> dict:
-        with self.transaction() as connection:
-            records = [
+    def _snapshot(self, connection: sqlite3.Connection) -> dict:
+        from .research import research_records
+
+        snapshot = {
+            "campaign": self._manifest(connection),
+            "experiments": [
                 self._record(row)
                 for row in connection.execute(
                     "SELECT * FROM experiments ORDER BY rowid"
                 )
-            ]
-            return {
-                "campaign": self._manifest(connection),
-                "experiments": records,
-                "decisions": [
-                    json.loads(row[0])
-                    for row in connection.execute(
-                        "SELECT payload FROM decisions ORDER BY rowid"
-                    )
-                ],
-            }
+            ],
+            "decisions": [
+                json.loads(row[0])
+                for row in connection.execute(
+                    "SELECT payload FROM decisions ORDER BY rowid"
+                )
+            ],
+        }
+        records = research_records(connection)
+        if records:
+            snapshot["research_records"] = records
+        return snapshot
+
+    def status(self) -> dict:
+        with self.transaction() as connection:
+            return self._snapshot(connection)
 
     def context(self) -> dict:
         snapshot = self.status()
@@ -385,6 +393,10 @@ class CampaignStore:
         return {
             "schema_version": "loopx_hpc_decision_context_v0",
             "context_digest": digest(snapshot),
+            "source": {
+                "campaign_id": snapshot["campaign"]["id"],
+                "manifest_digest": digest(snapshot["campaign"]),
+            },
             **snapshot,
             "eligible_evidence_ids": [r["id"] for r in eligible],
             "incumbent_id": incumbent,
@@ -393,7 +405,9 @@ class CampaignStore:
             "authority": "proposal_only; execution requires an explicit local execute or governed LoopX admission",
         }
 
-    def apply_proposal(self, proposal: dict) -> dict:
+    def apply_proposal(self, proposal: dict, *, knowledge_library=None) -> dict:
+        from .research import validate_reasoning
+
         required = {
             "id",
             "context_digest",
@@ -402,15 +416,20 @@ class CampaignStore:
             "evidence_ids",
             "configs",
         }
-        if not isinstance(proposal, dict) or set(proposal) != required:
-            raise ValueError(f"proposal fields must be exactly {sorted(required)}")
+        if not isinstance(proposal, dict) or set(proposal) not in (
+            required,
+            required | {"reasoning"},
+        ):
+            raise ValueError(
+                f"proposal fields must be {sorted(required)} with optional reasoning"
+            )
         _identifier(proposal["id"], "proposal id")
         _identifier(proposal["runtime"], "runtime label")
         if not isinstance(proposal["configs"], list) or not proposal["configs"]:
             raise ValueError("proposal requires candidate configs")
         if not isinstance(proposal["evidence_ids"], list):
             raise ValueError("evidence_ids must be a list")
-        with self.transaction() as connection:
+        with ExitStack() as locks, self.transaction() as connection:
             previous = connection.execute(
                 "SELECT * FROM decisions WHERE id=?", (proposal["id"],)
             ).fetchone()
@@ -418,25 +437,19 @@ class CampaignStore:
                 if previous["payload"] != canonical(proposal):
                     raise ValueError("proposal id reused with different contents")
                 return json.loads(previous["result"])
-            snapshot = {
-                "campaign": self._manifest(connection),
-                "experiments": [
-                    self._record(row)
-                    for row in connection.execute(
-                        "SELECT * FROM experiments ORDER BY rowid"
-                    )
-                ],
-                "decisions": [
-                    json.loads(row[0])
-                    for row in connection.execute(
-                        "SELECT payload FROM decisions ORDER BY rowid"
-                    )
-                ],
-            }
+            snapshot = self._snapshot(connection)
             if digest(snapshot) != proposal["context_digest"]:
                 raise ValueError(
                     "stale decision context; obtain a fresh context before proposing"
                 )
+            observation = None
+            if (
+                knowledge_library is not None
+                and isinstance(proposal.get("reasoning"), dict)
+                and proposal["reasoning"].get("lesson_use_ids")
+            ):
+                observation = locks.enter_context(knowledge_library.snapshot())
+            validate_reasoning(proposal, snapshot, observation)
             records = [
                 self._add(
                     connection, config, proposal["rationale"], proposal["evidence_ids"]

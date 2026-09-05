@@ -93,6 +93,20 @@ def demo(root: Path, *, execute: bool = False) -> dict:
             "rationale": "Evaluate the midpoint of the two measured initial configurations",
             "evidence_ids": [r["id"] for r in ranked[:2]],
             "configs": [{"x": midpoint}],
+            "reasoning": {
+                "hypothesis": spec["hypothesis"],
+                "prediction": "The midpoint has lower loss than both measured endpoints",
+                "selection_basis": "Both measured endpoints have equal loss; test the center of this synthetic bracket",
+                "alternatives": [
+                    {
+                        "config": {"x": 1},
+                        "reason_not_selected": "One remaining trial favors the bracket midpoint",
+                    }
+                ],
+                "uncertainty": "This deterministic synthetic demonstration establishes neither general optimization nor scientific validity",
+                "lesson_use_ids": [],
+                "agent": {"runtime": "deterministic-demo", "model": "none"},
+            },
         }
         outcome = store.apply_proposal(proposal)
         followup_ids = outcome["experiment_ids"]
@@ -131,6 +145,44 @@ def main(argv: list[str] | None = None) -> int:
         "propose", help="Validate an evidence-linked runtime-neutral proposal"
     )
     propose.add_argument("--input", required=True, type=Path)
+    propose.add_argument(
+        "--library",
+        type=Path,
+        help="Explicit local library; required when citing lessons",
+    )
+    evolution = sub.add_parser(
+        "evolution", help="Read the evidence-linked evolution graph and timeline"
+    )
+    evolution.add_argument("--format", choices=("json", "markdown"), default="json")
+    assess = sub.add_parser(
+        "assess", help="Append an authored, evidence-verified scientific assessment"
+    )
+    assess.add_argument("--input", type=Path, required=True)
+    publish = sub.add_parser(
+        "lesson-publish", help="Preview or explicitly share a verified lesson locally"
+    )
+    publish.add_argument("--input", type=Path, required=True)
+    publish.add_argument("--library", type=Path, required=True)
+    publish.add_argument("--execute", action="store_true")
+    search = sub.add_parser(
+        "lesson-search", help="Retrieve active advisory lessons by exact AND tags"
+    )
+    search.add_argument("--library", type=Path, required=True)
+    search.add_argument("--tag", action="append", default=[])
+    search.add_argument("--limit", type=int, default=10)
+    use = sub.add_parser(
+        "lesson-use",
+        help="Record an explicit applicability assessment in the target study",
+    )
+    use.add_argument("--input", type=Path, required=True)
+    use.add_argument("--library", type=Path, required=True)
+    withdraw = sub.add_parser(
+        "lesson-withdraw", help="Preview or explicitly withdraw a shared lesson"
+    )
+    withdraw.add_argument("--library", type=Path, required=True)
+    withdraw.add_argument("--lesson", required=True)
+    withdraw.add_argument("--reason", required=True)
+    withdraw.add_argument("--execute", action="store_true")
     submit = sub.add_parser(
         "submit", help="Preview or explicitly launch one local experiment"
     )
@@ -154,6 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         "demo", help="Run the bounded synthetic acceptance study"
     )
     demonstration.add_argument("--execute", action="store_true")
+    learning = sub.add_parser(
+        "learning-demo",
+        help="Run a bounded source-to-target lesson transfer acceptance study",
+    )
+    learning.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
     store = CampaignStore(args.root)
     try:
@@ -170,7 +227,60 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "status":
             result = store.status()
         elif args.action == "propose":
-            result = store.apply_proposal(json.loads(args.input.read_text()))
+            from .knowledge import KnowledgeLibrary
+
+            result = store.apply_proposal(
+                json.loads(args.input.read_text()),
+                knowledge_library=KnowledgeLibrary(args.library)
+                if args.library
+                else None,
+            )
+        elif args.action == "evolution":
+            from .evolution import build_evolution, render_evolution
+
+            result = build_evolution(store)
+            if args.format == "markdown":
+                print(render_evolution(result))
+                return 0
+        elif args.action == "assess":
+            from .research import ResearchJournal
+
+            result = ResearchJournal(store).record_assessment(
+                json.loads(args.input.read_text())
+            )
+        elif args.action == "lesson-publish":
+            from .knowledge import KnowledgeLibrary
+            from .research import ResearchJournal
+
+            bundle = ResearchJournal(store).make_lesson(
+                json.loads(args.input.read_text())
+            )
+            result = KnowledgeLibrary(args.library).publish(
+                bundle, execute=args.execute
+            )
+        elif args.action == "lesson-search":
+            from .knowledge import KnowledgeLibrary
+
+            result = KnowledgeLibrary(args.library).search(
+                tags=args.tag, limit=args.limit
+            )
+        elif args.action == "lesson-use":
+            from .knowledge import KnowledgeLibrary
+            from .research import ResearchJournal
+
+            result = ResearchJournal(store).record_lesson_use(
+                json.loads(args.input.read_text()), KnowledgeLibrary(args.library)
+            )
+        elif args.action == "lesson-withdraw":
+            from .knowledge import KnowledgeLibrary
+
+            result = KnowledgeLibrary(args.library).withdraw(
+                args.lesson, args.reason, execute=args.execute
+            )
+        elif args.action == "learning-demo":
+            from .research_demo import learning_demo
+
+            result = learning_demo(args.root, execute=args.execute)
         elif args.action == "submit":
             result = LocalExecutor(store).submit(args.experiment, execute=args.execute)
         elif args.action == "reconcile":
