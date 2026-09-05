@@ -16,6 +16,21 @@ class SchedulerRenderTests(unittest.TestCase):
     def setUp(self):
         self.resources = {"job_name": "study-01", "nodes": 2, "walltime": "01:30:00"}
 
+    def test_login_shell_requires_explicit_trusted_startup_request(self):
+        self.assertTrue(
+            render_script("pbs", ["program"], self.resources, {}).startswith(
+                "#!/bin/bash\n"
+            )
+        )
+        for scheduler in ("pbs", "slurm"):
+            script = render_script(
+                scheduler, ["program"], self.resources, {"login_shell": True}
+            )
+            self.assertTrue(script.startswith("#!/bin/bash -l\n"))
+            self.assertIn("set -euo pipefail", script)
+        with self.assertRaises(ValueError):
+            render_script("pbs", ["program"], self.resources, {"login_shell": "true"})
+
     def test_slurm_uses_literal_directives_and_explicit_launcher(self):
         script = render_script(
             "slurm",

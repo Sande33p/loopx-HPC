@@ -74,6 +74,7 @@ class EnvironmentTests(unittest.TestCase):
             {"setup_script": "echo arbitrary"},
             {"configured": "false"},
             {"purge_modules": 1},
+            {"login_shell": "true"},
             {"modules": ["compiler/1; echo injected"]},
             {"modules": ["--force"]},
             {"modules": ["compiler/1", "compiler/1"]},
@@ -97,7 +98,65 @@ class EnvironmentTests(unittest.TestCase):
         profile = validate_environment({})
         self.assertEqual(profile["modules"], [])
         self.assertIsNone(profile["working_directory"])
+        self.assertFalse(profile["login_shell"])
         self.assertEqual(len(render_environment_prologue(profile)), 1)
+
+    def test_module_loading_relaxes_only_nounset_then_restores_it(self):
+        lines = render_environment_prologue({"modules": ["frameworks/1.0"]})
+        script = "\n".join(
+            [
+                "set -euo pipefail",
+                "unset ZSH_EVAL_CONTEXT",
+                'module() { printf "module:%s\\n" "$ZSH_EVAL_CONTEXT"; }',
+                *lines,
+                "case $- in *u*) printf restored ;; *) exit 9 ;; esac",
+            ]
+        )
+        result = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, timeout=5
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "module:\nrestored")
+        failed = subprocess.run(
+            [
+                "bash",
+                "-c",
+                "\n".join(
+                    [
+                        "set -euo pipefail",
+                        "module() { return 7; }",
+                        *lines,
+                        "printf BAD",
+                    ]
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(failed.returncode, 7)
+        self.assertNotIn("BAD", failed.stdout)
+
+    def test_module_prologue_preserves_disabled_nounset(self):
+        lines = render_environment_prologue({"modules": ["frameworks/1.0"]})
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                "\n".join(
+                    [
+                        "set -eo pipefail",
+                        "module() { :; }",
+                        *lines,
+                        "case $- in *u*) exit 9 ;; esac",
+                    ]
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
