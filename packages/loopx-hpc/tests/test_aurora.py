@@ -55,9 +55,14 @@ def test_template_is_inert_public_input_and_exact_executor_schema():
 def test_aurora_profile_launches_only_workload_ranks_and_matches_cpu_gpu_topology():
     profile = configured(nodes=2)
     assert profile == validate_profile(profile)
-    assert profile["resources"]["system"] == "aurora"
+    assert "system" not in profile["resources"]
     assert profile["resources"]["nodes"] == 2
     assert profile["resources"]["place"] == "scatter"
+    script = render_script(
+        "pbs", ["scientific-program"], profile["resources"], profile["environment"]
+    )
+    assert "#PBS -l select=2\n" in script
+    assert ":system=" not in script
     assert profile["environment"]["login_shell"]
     assert profile["launcher"][:4] == [
         profile["python"],
