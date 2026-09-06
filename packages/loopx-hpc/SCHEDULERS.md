@@ -43,6 +43,10 @@ those along with the profile. The outer batch worker runs once. Its allocation
 bootstrap reads `PBS_NODEFILE` once before `mpiexec`, derives the rendezvous host,
 and starts one scientific process per selected tile/device. Each rank validates
 its native rank identity and sets explicit distributed environment variables.
+Aurora's execution queue supplies its `system` chunk default; the site profile
+therefore emits `select=N` without an explicit `system=aurora` chunk. Current
+Aurora PBS marks that resource host-owned and rejects it when a job selects it
+explicitly.
 
 The default tile layout is 12 ranks/node (6 physical GPUs with 2 tiles each);
 device mode is 6 ranks/node. CPU binding uses documented compact core ranges.
