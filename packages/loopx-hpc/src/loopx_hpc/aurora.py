@@ -149,7 +149,6 @@ def aurora_profile(
             "walltime": walltime,
             "account": account,
             "queue": queue,
-            "system": "aurora",
             "place": "scatter",
             "filesystems": ["home", "flare"] if filesystems is None else filesystems,
         },

@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 import os
 import subprocess
+import stat
 import sys
 
 import pytest
@@ -92,6 +93,54 @@ def test_submission_timeout_is_uncertain_not_a_safe_retry(tmp_path, monkeypatch)
         == submitted["token"]
     )
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("backend", "submit_command"),
+    [("pbs", "qsub"), ("slurm", "sbatch")],
+)
+def test_rejected_submission_stderr_stays_private_and_replay_safe(
+    tmp_path, monkeypatch, backend, submit_command
+):
+    store, first, second = study(tmp_path)
+    calls = []
+    private_detail = "private fixture scheduler diagnostic\n"
+
+    def reject(argv, cwd):
+        calls.append(list(argv))
+        assert argv[0] == submit_command
+        return subprocess.CompletedProcess(argv, 1, "", private_detail)
+
+    monkeypatch.setattr(execution, "_run_cli", reject)
+    executor = SchedulerExecutor(store)
+    submitted = executor.submit(first["id"], profile(backend), execute=True)
+    assert submitted["status"] == "unknown"
+    assert submitted["failure"] == "submission_unresolved:ValueError"
+    assert len(calls) == 1
+
+    diagnostic = (
+        store.root
+        / "runs"
+        / first["id"]
+        / submitted["token"]
+        / "scheduler-submit.stderr"
+    )
+    assert diagnostic.read_text() == private_detail
+    assert stat.S_IMODE(diagnostic.stat().st_mode) == 0o600
+    with store.transaction() as connection:
+        journal = "\n".join(
+            row[0] for row in connection.execute("SELECT payload FROM events")
+        )
+    projected = json.dumps(store.status(), sort_keys=True) + json.dumps(
+        store.context(), sort_keys=True
+    )
+    assert private_detail not in projected + journal
+
+    assert executor.submit(first["id"], profile(backend), execute=True) == submitted
+    assert diagnostic.read_text() == private_detail
+    assert len(calls) == 1
+    with pytest.raises(ValueError, match="concurrency"):
+        executor.submit(second["id"], profile(backend), execute=True)
 
 
 @pytest.mark.parametrize(

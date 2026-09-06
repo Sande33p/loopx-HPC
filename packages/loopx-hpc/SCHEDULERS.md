@@ -43,6 +43,10 @@ those along with the profile. The outer batch worker runs once. Its allocation
 bootstrap reads `PBS_NODEFILE` once before `mpiexec`, derives the rendezvous host,
 and starts one scientific process per selected tile/device. Each rank validates
 its native rank identity and sets explicit distributed environment variables.
+Aurora's execution queue supplies its `system` chunk default; the site profile
+therefore emits `select=N` without an explicit `system=aurora` chunk. Current
+Aurora PBS marks that resource host-owned and rejects it when a job selects it
+explicitly.
 
 The default tile layout is 12 ranks/node (6 physical GPUs with 2 tiles each);
 device mode is 6 ranks/node. CPU binding uses documented compact core ranges.
@@ -109,6 +113,11 @@ effect and does not drive execution or accept scientific conclusions.
   ID from a matching completed worker receipt and independently query accounting.
   Before that proof, the attempt remains unknown; there is no manual job-ID
   override or automatic resubmission.
+- When a returned submission acknowledgement is unresolved, bounded native
+  stderr is retained only in the mode-`0600` private attempt artifact
+  `runs/EXPERIMENT/TOKEN/scheduler-submit.stderr`. It is never copied into the
+  SQLite journal, status/context output, or tracking projections. A missing
+  artifact means stderr was empty or its private persistence also failed.
 - PBS jobs are marked non-rerunnable; Slurm uses `--no-requeue`. The worker also
   exclusively claims a durable `started.json` before execution. Scheduler
   redelivery cannot silently rerun the same payload.

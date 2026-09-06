@@ -126,11 +126,16 @@ def _run_cli(argv: list[str], cwd: Path) -> subprocess.CompletedProcess:
             check=False,
         )
         stdout.seek(0)
+        stderr.seek(0)
         output = stdout.read(1_000_001)
-    if len(output) > 1_000_000:
+        error_output = stderr.read(1_000_001)
+    if len(output) > 1_000_000 or len(error_output) > 1_000_000:
         raise ValueError("scheduler response exceeds size limit")
     return subprocess.CompletedProcess(
-        argv, completed.returncode, output.decode("utf-8"), ""
+        argv,
+        completed.returncode,
+        output.decode("utf-8"),
+        error_output.decode("utf-8"),
     )
 
 
@@ -268,6 +273,7 @@ class SchedulerExecutor:
                 },
             )
         dispatched = False
+        response = None
         try:
             directory.mkdir(parents=True, mode=0o700)
             _write_new(directory / "config.json", canonical(packet["config"]) + "\n")
@@ -314,6 +320,18 @@ class SchedulerExecutor:
                     },
                 )
         except (OSError, ValueError, subprocess.SubprocessError) as error:
+            # Native scheduler diagnostics can include private site details. Keep
+            # bounded stderr beside the private attempt packet, never in SQLite,
+            # status/context, or tracker projections. Diagnostic persistence is
+            # subordinate to the conservative unknown/no-retry transition.
+            if dispatched and response is not None and response.stderr:
+                try:
+                    _write_new(
+                        directory / "scheduler-submit.stderr", response.stderr
+                    )
+                    _sync_directory(directory)
+                except OSError:
+                    pass
             self._unresolved(
                 experiment_id,
                 token,

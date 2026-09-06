@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+import loopx_hpc.scheduler_execution as execution
 from loopx_hpc.campaign import CampaignStore
 from loopx_hpc.cli import demo_spec, main
 from loopx_hpc.local import LocalExecutor
@@ -72,6 +73,29 @@ class SchedulerDouble:
         self.exit_code = result.returncode
         self.state = "terminal"
         return result
+
+
+def test_native_cli_captures_bounded_stderr(tmp_path):
+    result = execution._run_cli(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('accepted\\n'); "
+            "sys.stderr.write('private diagnostic\\n')",
+        ],
+        tmp_path,
+    )
+    assert result.returncode == 0
+    assert result.stdout == "accepted\n"
+    assert result.stderr == "private diagnostic\n"
+
+
+def test_native_cli_rejects_oversized_stderr(tmp_path):
+    with pytest.raises(ValueError, match="size limit"):
+        execution._run_cli(
+            [sys.executable, "-c", "import sys; sys.stderr.write('x' * 1_000_001)"],
+            tmp_path,
+        )
 
 
 @pytest.mark.parametrize("backend", ["pbs", "slurm"])
