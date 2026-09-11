@@ -25,6 +25,7 @@ on:
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/frontstage-pages-workflow-smoke.py"
       - "examples/readme-star-history-smoke.py"
       - "examples/frontstage-stargazer-fetch-smoke.py"
       - "examples/dev-book-publication-smoke.py"
@@ -58,6 +59,7 @@ on:
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/frontstage-pages-workflow-smoke.py"
       - "examples/readme-star-history-smoke.py"
       - "examples/frontstage-stargazer-fetch-smoke.py"
       - "examples/dev-book-publication-smoke.py"
@@ -83,6 +85,9 @@ concurrency:
 
 jobs:
   build:
+    # Forks retain PR validation without requiring publication credentials.
+    # Scheduled, push, and manual publication belongs to the upstream site.
+    if: github.event_name == 'pull_request' || github.repository == 'huangruiteng/loopx'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -131,6 +136,9 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -r docs/requirements-docs.txt
           python -m pip install --disable-pip-version-check -e .
+
+      - name: Validate Pages workflow isolation
+        run: python3 examples/frontstage-pages-workflow-smoke.py
 
       - name: Validate public showcase catalog
         run: python3 examples/showcase-catalog-smoke.py
@@ -222,7 +230,7 @@ jobs:
           path: output/frontstage-pages/site
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.repository == 'huangruiteng/loopx'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
