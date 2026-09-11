@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Smoke-test the public-safe GitHub Pages frontstage workflow source."""
+"""Smoke-test fork-safe validation and upstream-only Frontstage publication."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -58,9 +59,42 @@ def assert_pr_and_push_trigger(trigger_text: str, path: str) -> None:
         )
 
 
+def assert_publication_isolation(text: str) -> None:
+    build, deploy = text.split("\n  build:\n", 1)[1].split("\n  deploy:\n", 1)
+    # PR validation must run on any repository. Every non-PR event on a fork
+    # must skip before credential access; deployment independently stays gated.
+    assert re.findall(r"^    if: (.+)$", build, re.MULTILINE) == [
+        "github.event_name == 'pull_request' || github.repository == 'huangruiteng/loopx'"
+    ]
+    assert re.findall(r"^    if: (.+)$", deploy, re.MULTILINE) == [
+        "github.event_name != 'pull_request' && github.repository == 'huangruiteng/loopx'"
+    ]
+    assert_contains(deploy, "\n    needs: build\n")
+
+    steps = dict(re.findall(
+        r"^      - name: ([^\n]+)\n(.*?)(?=^      - name:|\Z)",
+        build,
+        re.MULTILINE | re.DOTALL,
+    ))
+    for name in [
+        "Fetch complete GitHub stargazer history",
+        "Generate verified public star history",
+        "Verify star history freshness",
+        "Configure Pages",
+        "Upload Pages artifact",
+    ]:
+        assert re.findall(r"^        if: (.+)$", steps[name], re.MULTILINE) == [
+            "github.event_name != 'pull_request'"
+        ], name
+    validation = steps["Validate Pages workflow isolation"]
+    assert not re.search(r"^        if:", validation, re.MULTILINE)
+    assert_contains(validation, "run: python3 examples/frontstage-pages-workflow-smoke.py")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     trigger_text = text.split("\npermissions:", 1)[0]
+    assert_publication_isolation(text)
 
     for needle in [
         "workflow_dispatch:",
@@ -133,6 +167,7 @@ def main() -> int:
         assert_absent(text, forbidden)
 
     for path in [
+        "examples/frontstage-pages-workflow-smoke.py",
         "docs/book/mkdocs.zh.yaml",
         "docs/book/mkdocs.en.yaml",
         "examples/dev-book-publication-smoke.py",
